@@ -1,128 +1,81 @@
-# -*- coding: utf-8 -*-
-
 import streamlit as st
-import google.generativeai as genai
 import os
-import tempfile
 import time
+import tempfile
+from google import genai
 
-# ==============================
-# KONFIGURASI HALAMAN
-# ==============================
+# ================== PAGE CONFIG ==================
 st.set_page_config(
     page_title="ProPrompt Maker",
+    page_icon="🚀",
     layout="centered"
 )
 
-st.title("ProPrompt Maker")
-st.write(
-    "Upload video MP4 Anda, lalu aplikasi akan menghasilkan "
-    "prompt AI image/video yang detail (bahasa Inggris)."
+st.title("🚀 ProPrompt Maker")
+st.caption("Upload video MP4 → AI akan membuat prompt visual detail (English)")
+
+# ================== API KEY ==================
+api_key = st.secrets.get("GOOGLE_API_KEY") or st.text_input(
+    "Masukkan Google API Key",
+    type="password"
 )
 
-# ==============================
-# AMBIL API KEY DARI SECRETS
-# ==============================
-API_KEY = os.getenv("GOOGLE_API_KEY")
-
-if not API_KEY:
-    st.error(
-        "API Key tidak ditemukan.\n\n"
-        "Silakan tambahkan GOOGLE_API_KEY di Streamlit Secrets."
-    )
+if not api_key:
+    st.warning("Masukkan Google API Key untuk melanjutkan.")
     st.stop()
 
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=api_key)
 
-# ==============================
-# UPLOAD VIDEO
-# ==============================
-uploaded_file = st.file_uploader(
+# ================== UPLOAD VIDEO ==================
+uploaded = st.file_uploader(
     "Upload video MP4",
     type=["mp4"]
 )
 
-if uploaded_file:
-    file_size_mb = uploaded_file.size / (1024 * 1024)
+if uploaded:
+    size_mb = uploaded.size / (1024 * 1024)
 
-    if file_size_mb < 10:
-        st.error(
-            f"Ukuran video terlalu kecil ({file_size_mb:.2f} MB). "
-            "Minimal 10 MB."
-        )
-    else:
-        st.success(f"Video diterima ({file_size_mb:.2f} MB)")
+    if size_mb < 10:
+        st.error("Minimal ukuran video 10MB")
+        st.stop()
 
-        if st.button("Generate Prompt"):
-            with st.spinner("Menganalisis video, mohon tunggu..."):
-                try:
-                    # ==============================
-                    # SIMPAN FILE SEMENTARA
-                    # ==============================
-                    with tempfile.NamedTemporaryFile(
-                        delete=False,
-                        suffix=".mp4"
-                    ) as tmp:
-                        tmp.write(uploaded_file.read())
-                        video_path = tmp.name
+    st.success(f"Video diterima ({size_mb:.2f} MB)")
 
-                    # ==============================
-                    # UPLOAD KE GEMINI
-                    # ==============================
-                    video_file = genai.upload_file(path=video_path)
+    if st.button("Generate AI Prompt ✨"):
+        with st.spinner("Menganalisis video..."):
+            try:
+                # Save temp file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
+                    f.write(uploaded.read())
+                    video_path = f.name
 
-                    while video_file.state.name == "PROCESSING":
-                        time.sleep(3)
-                        video_file = genai.get_file(video_file.name)
+                # Upload video
+                video = client.files.upload(file=video_path)
 
-                    # ==============================
-                    # GENERATE PROMPT
-                    # ==============================
-                    model = genai.GenerativeModel(
-                        model_name="gemini-1.5-pro"
-                    )
+                # Wait until ready
+                while video.state.name == "PROCESSING":
+                    time.sleep(2)
+                    video = client.files.get(name=video.name)
 
-                    instruction = (
-                        "Create a highly detailed AI image prompt based on "
-                        "the visual elements, lighting, colors, camera angle, "
-                        "and atmosphere of this video. "
-                        "Write in English. "
-                        "Optimize for Midjourney or similar AI image generators."
-                    )
+                # Generate prompt
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[
+                        video,
+                        """Create a highly detailed AI image prompt based on this video.
+Include subject, environment, lighting, colors, camera angle, style, mood.
+Write in English, optimized for Midjourney / cinematic AI."""
+                    ]
+                )
 
-                    response = model.generate_content(
-                        [video_file, instruction]
-                    )
+                st.subheader("📝 AI Prompt Result")
+                st.text_area(
+                    "Copy prompt:",
+                    response.text,
+                    height=250
+                )
 
-                    result_prompt = response.text.strip()
+                os.remove(video_path)
 
-                    # ==============================
-                    # OUTPUT
-                    # ==============================
-                    st.divider()
-                    st.subheader("Generated Prompt")
-
-                    st.text_area(
-                        "Copy the prompt below:",
-                        value=result_prompt,
-                        height=220
-                    )
-
-                    st.caption(
-                        "Tip: tap & hold the text to copy on mobile."
-                    )
-
-                    # ==============================
-                    # CLEAN UP
-                    # ==============================
-                    os.remove(video_path)
-
-                except Exception as e:
-                    st.error("Terjadi kesalahan saat memproses video.")
-                    st.exception(e)
-
-# ==============================
-# FOOTER
-# ==============================
-st.divider()
-st.caption("Powered by Gemini 1.5 Pro")
+            except Exception as e:
+                st.error(f"Gagal memproses video: {e}")
