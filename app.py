@@ -79,7 +79,7 @@ if uploaded_file:
                     # GENERATE PROMPT
                     # ==============================
                     model = genai.GenerativeModel(
-                        model_name="gemini-1.5-flash"
+                        model_name="gemini-1.5-pro"
                     )
 
                     instruction = (
@@ -125,4 +125,4 @@ if uploaded_file:
 # FOOTER
 # ==============================
 st.divider()
-st.caption("Powered by Gemini 1.5 Flash")
+st.caption("Powered by Gemini 1.5 Pro")
